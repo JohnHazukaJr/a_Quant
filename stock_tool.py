@@ -82,13 +82,6 @@ def volatility_scale(annual_vol):
     return {"category": category, "note": note}
 
 
-def get_volume_history(ticker, period="3mo"):
-    """Pull real historical daily trading volume for a ticker."""
-    stock = yf.Ticker(ticker)
-    history = stock.history(period=period)
-    return history["Volume"].tolist()
-
-
 def relative_volume(volumes):
     """Compare the most recent day's volume to its own historical average."""
     latest = volumes[-1]
@@ -182,36 +175,37 @@ def insider_signal(insider_df):
     return {"level": level, "note": note}
 
 
+def generate_report(ticker):
+    """Build the full composite signal report for a given ticker."""
+    price_data = get_price_history(ticker)
+    prices = price_data["Close"].tolist()
+    volumes = price_data["Volume"].tolist()
+
+    summary = analyze_stock(ticker, prices)
+    trend_text = explain_summary(summary)
+
+    daily_returns = calculate_returns(prices)
+    ann_vol = annualized_volatility(daily_returns)
+    risk = volatility_scale(ann_vol)
+
+    rel_vol = relative_volume(volumes)
+    vol = volume_signal(rel_vol)
+
+    holders = get_institutional_summary(ticker)
+    inst = institutional_signal(holders)
+
+    insiders = get_insider_activity(ticker)
+    insider = insider_signal(insiders)
+
+    print(f"\n=== Stock Signal Report: {ticker} ===")
+    print(f"Trend:                    {trend_text}")
+    print(f"Risk:                     {risk['category']} — {risk['note']}")
+    print(f"Volume:                   {vol['level']} ({rel_vol}x normal) — {vol['note']}")
+    print(f"Institutional (quarterly): {inst['level']} — {inst['note']}")
+    print(f"Insider activity (recent): {insider['level']} — {insider['note']}")
+    print("\nNote: this is an educational analysis tool, not financial advice.")
+    print("No combination of these signals reliably predicts future price movement.")
+
+
 # --- Try it out ---
-data = get_price_history("AAPL")
-prices = data["Close"].tolist()
-print(data.columns)
-print(len(prices))
-
-result = analyze_stock("AAPL", prices)
-print(result)
-print(result["ticker"])
-print(result["average_daily_return"])
-
-explanation = explain_summary(result)
-print(explanation)
-
-daily_returns = calculate_returns(prices)
-ann_vol = annualized_volatility(daily_returns)
-scale = volatility_scale(ann_vol)
-print(f"Annualized volatility: {ann_vol}%")
-print(scale)
-
-volumes = get_volume_history("AAPL")
-rel_vol = relative_volume(volumes)
-vol_signal = volume_signal(rel_vol)
-print(f"Relative volume: {rel_vol}x")
-print(vol_signal)
-
-holders = get_institutional_summary("AAPL")
-inst_signal = institutional_signal(holders)
-print(inst_signal)
-
-insiders = get_insider_activity("AAPL")
-insider_result = insider_signal(insiders)
-print(insider_result)
+generate_report("AAPL")
