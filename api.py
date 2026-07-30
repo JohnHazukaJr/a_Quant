@@ -1,8 +1,13 @@
+import logging
+import traceback
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from stock_tool import build_report
+
+logger = logging.getLogger("uvicorn.error")
 
 app = FastAPI(
     title="a_Quant",
@@ -23,7 +28,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/report/{ticker}")
 def report(ticker: str):
     """API endpoint: returns the full signal report for a given ticker as JSON."""
-    return build_report(ticker.upper())
+    try:
+        return build_report(ticker.upper())
+    except Exception as exc:
+        logger.error("build_report(%s) failed:\n%s", ticker, traceback.format_exc())
+        return JSONResponse(status_code=502, content={"error": str(exc)})
 
 
 @app.get("/")
