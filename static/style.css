@@ -106,6 +106,22 @@ button:hover {
     filter: brightness(1.05);
 }
 
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    filter: none;
+}
+
+.status-message {
+    color: #1B6D89;
+    font-weight: 600;
+    padding: 8px 4px;
+}
+
+.error-message {
+    color: #C0392B;
+}
+
 /* Glass card */
 .card {
     position: relative;

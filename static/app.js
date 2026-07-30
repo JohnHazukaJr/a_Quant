@@ -38,10 +38,47 @@ function bubble(cls, icon) {
     return `<div class="bubble ${cls}"><i data-lucide="${icon}"></i></div>`;
 }
 
+let currentAbortController = null;
+
+function renderMessage(text, cls) {
+    document.getElementById("results").innerHTML = `<p class="${cls}">${text}</p>`;
+}
+
 async function getReport() {
-    const ticker = document.getElementById("tickerInput").value;
-    const response = await fetch(`${API_BASE}/report/${ticker}`);
-    const data = await response.json();
+    const input = document.getElementById("tickerInput");
+    const button = document.querySelector(".search-bar button");
+    const ticker = input.value.trim().toUpperCase();
+
+    if (!ticker) {
+        renderMessage("Enter a ticker first.", "status-message");
+        return;
+    }
+
+    if (currentAbortController) currentAbortController.abort();
+    const controller = new AbortController();
+    currentAbortController = controller;
+
+    button.disabled = true;
+    const originalButtonText = button.textContent;
+    button.textContent = "Loading…";
+    renderMessage("Loading report…", "status-message");
+
+    let data;
+    try {
+        const response = await fetch(`${API_BASE}/report/${encodeURIComponent(ticker)}`, { signal: controller.signal });
+        data = await response.json();
+        if (!response.ok) {
+            renderMessage(data.error || "Something went wrong. Please try again.", "status-message error-message");
+            return;
+        }
+    } catch (err) {
+        if (err.name === "AbortError") return;
+        renderMessage("Network error — check your connection and try again.", "status-message error-message");
+        return;
+    } finally {
+        button.disabled = false;
+        button.textContent = originalButtonText;
+    }
 
     const liveClass = trendClass(data.day_change_note);
     const trendClassName = trendClass(data.trend);
@@ -105,3 +142,9 @@ async function getReport() {
 
     lucide.createIcons();
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("tickerInput").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") getReport();
+    });
+});

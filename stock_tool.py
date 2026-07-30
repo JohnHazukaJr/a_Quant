@@ -1,8 +1,54 @@
+import functools
+import re
 import statistics
 import math
+import threading
+import time
 import yfinance as yf
 
 
+class StockToolError(Exception):
+    """Base class for expected, user-facing errors from stock_tool."""
+
+
+class InvalidTickerError(StockToolError):
+    """Ticker string failed basic format validation before any network call."""
+
+
+class TickerDataError(StockToolError):
+    """Ticker is well-formed but yfinance returned no usable data for it."""
+
+
+TICKER_RE = re.compile(r"^[A-Z0-9.\-]{1,10}$")
+
+
+def validate_ticker(ticker):
+    """Normalize and validate a ticker symbol before any network call."""
+    ticker = (ticker or "").strip().upper()
+    if not TICKER_RE.match(ticker):
+        raise InvalidTickerError(f"'{ticker}' doesn't look like a valid ticker symbol.")
+    return ticker
+
+
+def retry_on_failure(max_attempts=3, base_delay=0.5):
+    """Retry a flaky network call with exponential backoff. Yahoo Finance
+    occasionally rate-limits or transiently fails; most such failures clear
+    up within a couple of seconds."""
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return fn(*args, **kwargs)
+                except Exception:
+                    if attempt == max_attempts:
+                        raise
+                    time.sleep(base_delay * (2 ** (attempt - 1)))
+        return wrapper
+    return decorator
+
+
+@retry_on_failure()
 def get_price_history(ticker, period="3mo"):
     """Pull real historical daily price and volume data for a ticker."""
     stock = yf.Ticker(ticker)
@@ -10,6 +56,7 @@ def get_price_history(ticker, period="3mo"):
     return history
 
 
+@retry_on_failure()
 def get_live_quote(ticker):
     """Pull the current real-time-delayed quote for a ticker (price, day
     range, market cap) — the freshest data yfinance can provide."""
@@ -127,6 +174,7 @@ def volume_signal(rel_vol):
         return {"level": "Normal", "note": "Trading activity is within its typical range."}
 
 
+@retry_on_failure()
 def get_institutional_summary(ticker):
     """Pull real institutional ownership data for a ticker."""
     stock = yf.Ticker(ticker)
@@ -164,6 +212,7 @@ def institutional_signal(holders_df):
     return {"level": level, "note": note}
 
 
+@retry_on_failure()
 def get_insider_activity(ticker):
     """Pull recent insider (executive/board) transaction data — much
     more current than quarterly institutional filings (insiders must
@@ -203,6 +252,7 @@ def insider_signal(insider_df):
     return {"level": level, "note": note}
 
 
+@retry_on_failure()
 def get_fcf_data(ticker):
     """Pull quarterly Free Cash Flow figures and shares outstanding for a
     ticker."""
@@ -231,66 +281,29 @@ def fcf_per_share(fcf_data):
     return {"per_share": per_share, "note": note}
 
 
-def generate_report(ticker):
-    """Build the full composite signal report for a given ticker."""
-    quote = get_live_quote(ticker)
+_report_cache = {}  # ticker -> (expires_at, report_dict)
+_cache_lock = threading.Lock()
+CACHE_TTL_SECONDS = 60
+
+
+def _fetch_report_data(ticker):
+    """Fetch and assemble the full signal report for a ticker (no caching,
+    no validation — always hits the network). Shared by build_report and
+    generate_report so there's one source of truth for report assembly."""
+    try:
+        quote = get_live_quote(ticker)
+    except KeyError:
+        raise TickerDataError(f"No data found for '{ticker}' — check the symbol is correct.")
     quote_summary = live_quote_summary(quote)
 
     price_data = get_price_history(ticker)
+    if price_data is None or price_data.empty:
+        raise TickerDataError(f"No price data found for '{ticker}' — check the symbol is correct.")
+
     prices = price_data["Close"].tolist()
-    volumes = price_data["Volume"].tolist()
+    if len(prices) < 2:
+        raise TickerDataError(f"Not enough price history for '{ticker}' to compute trend/risk.")
 
-    summary = analyze_stock(ticker, prices)
-    trend_text = explain_summary(summary)
-
-    daily_returns = calculate_returns(prices)
-    ann_vol = annualized_volatility(daily_returns)
-    risk = volatility_scale(ann_vol)
-
-    rel_vol = relative_volume(volumes)
-    vol = volume_signal(rel_vol)
-
-    holders = get_institutional_summary(ticker)
-    if holders is not None and not holders.empty:
-        inst = institutional_signal(holders)
-        inst_line = f"{inst['level']} — {inst['note']}"
-    else:
-        inst_line = "Not available for this ticker."
-
-    insiders = get_insider_activity(ticker)
-    if insiders is not None and not insiders.empty:
-        insider = insider_signal(insiders)
-        insider_line = f"{insider['level']} — {insider['note']}"
-    else:
-        insider_line = "Not available for this ticker."
-
-    fcf_data = get_fcf_data(ticker)
-    if fcf_data is not None and len(fcf_data["quarterly_fcf"]) >= 4:
-        fcf = fcf_per_share(fcf_data)
-        fcf_line = f"${fcf['per_share']}/share — {fcf['note']}"
-    else:
-        fcf_line = "Not available for this ticker."
-
-    print(f"\n=== Stock Signal Report: {ticker} ===")
-    print(f"Live Quote:               ${quote['last_price']} ({quote_summary['note']}), day range ${quote['day_low']}–${quote['day_high']}")
-    print(f"Trend:                    {trend_text}")
-    print(f"Risk:                     {risk['category']} — {risk['note']}")
-    print(f"Volume:                   {vol['level']} ({rel_vol}x normal) — {vol['note']}")
-    print(f"Institutional (quarterly): {inst_line}")
-    print(f"Insider activity (recent): {insider_line}")
-    print(f"Free Cash Flow/Share (TTM): {fcf_line}")
-    print("\nNote: this is an educational analysis tool, not financial advice.")
-    print("No combination of these signals reliably predicts future price movement.")
-
-
-def build_report(ticker):
-    """Calculate the full signal report for a ticker and return it as a
-    dictionary (no printing) — this is what the API will use."""
-    quote = get_live_quote(ticker)
-    quote_summary = live_quote_summary(quote)
-
-    price_data = get_price_history(ticker)
-    prices = price_data["Close"].tolist()
     volumes = price_data["Volume"].tolist()
 
     summary = analyze_stock(ticker, prices)
@@ -334,9 +347,49 @@ def build_report(ticker):
     }
 
 
+def build_report(ticker):
+    """Validate a ticker, return its cached report if fresh, otherwise
+    fetch, cache, and return a full signal report dictionary. This is
+    what the API and CLI both use."""
+    ticker = validate_ticker(ticker)
+
+    now = time.monotonic()
+    with _cache_lock:
+        cached = _report_cache.get(ticker)
+        if cached and cached[0] > now:
+            return cached[1]
+
+    data = _fetch_report_data(ticker)
+
+    with _cache_lock:
+        _report_cache[ticker] = (now + CACHE_TTL_SECONDS, data)
+
+    return data
+
+
+def generate_report(ticker):
+    """Build the full composite signal report for a given ticker and
+    print it in plain English."""
+    report = build_report(ticker)
+
+    quote = report["live_quote"]
+    vol = report["volume"]
+
+    print(f"\n=== Stock Signal Report: {report['ticker']} ===")
+    print(f"Live Quote:               ${quote['last_price']} ({report['day_change_note']}), day range ${quote['day_low']}–${quote['day_high']}")
+    print(f"Trend:                    {report['trend']}")
+    print(f"Risk:                     {report['risk']['category']} — {report['risk']['note']}")
+    print(f"Volume:                   {vol['level']} ({vol['ratio']}x normal) — {vol['note']}")
+    print(f"Institutional (quarterly): {report['institutional']['level']} — {report['institutional']['note']}")
+    print(f"Insider activity (recent): {report['insider']['level']} — {report['insider']['note']}")
+    if report["fcf"]["per_share"] is not None:
+        print(f"Free Cash Flow/Share (TTM): ${report['fcf']['per_share']}/share — {report['fcf']['note']}")
+    else:
+        print(f"Free Cash Flow/Share (TTM): {report['fcf']['note']}")
+    print("\nNote: this is an educational analysis tool, not financial advice.")
+    print("No combination of these signals reliably predicts future price movement.")
+
+
 if __name__ == "__main__":
     ticker_input = input("Enter a stock ticker (e.g. AAPL, TSLA, MSFT): ")
-    report = build_report(ticker_input.upper())
-    print(report)
-
-    
+    generate_report(ticker_input)
