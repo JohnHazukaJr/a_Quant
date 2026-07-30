@@ -173,3 +173,73 @@ def test_build_report_uses_cache_within_ttl():
         build_report("AAPL")
 
     assert mock_quote.call_count == 1
+
+
+@pytest.fixture(autouse=True)
+def clear_search_cache():
+    stock_tool._search_cache.clear()
+    yield
+    stock_tool._search_cache.clear()
+
+
+def test_search_tickers_returns_shaped_results():
+    df = pd.DataFrame(
+        {"shortName": ["Apple Inc.", "Advance Auto Parts Inc."], "exchange": ["NMS", "NYQ"], "quoteType": ["EQUITY", "EQUITY"]},
+        index=pd.Index(["AAPL", "AAP"], name="symbol"),
+    )
+    with patch("stock_tool._lookup_stock", return_value=df) as mock_lookup:
+        results = stock_tool.search_tickers("aap")
+
+    mock_lookup.assert_called_once_with("AAP", 8)
+    assert results == [
+        {"symbol": "AAPL", "name": "Apple Inc.", "exchange": "NMS", "quote_type": "EQUITY"},
+        {"symbol": "AAP", "name": "Advance Auto Parts Inc.", "exchange": "NYQ", "quote_type": "EQUITY"},
+    ]
+
+
+def test_search_tickers_handles_missing_name_field():
+    # Real yfinance Lookup data sometimes has a NaN (float, not None)
+    # shortName for thinly-traded symbols — must not leak a raw NaN into
+    # the response (it isn't valid JSON and previously caused a 500).
+    df = pd.DataFrame(
+        {"shortName": [float("nan")], "longName": [float("nan")], "exchange": ["NGM"], "quoteType": ["EQUITY"]},
+        index=pd.Index(["ELOL"], name="symbol"),
+    )
+    with patch("stock_tool._lookup_stock", return_value=df):
+        results = stock_tool.search_tickers("ELO")
+
+    assert results == [{"symbol": "ELOL", "name": "", "exchange": "NGM", "quote_type": "EQUITY"}]
+
+
+def test_search_tickers_empty_query_returns_empty_list_without_network_call():
+    with patch("stock_tool._lookup_stock") as mock_lookup:
+        assert stock_tool.search_tickers("") == []
+    mock_lookup.assert_not_called()
+
+
+def test_search_tickers_invalid_query_returns_empty_list_without_network_call():
+    with patch("stock_tool._lookup_stock") as mock_lookup:
+        assert stock_tool.search_tickers("???") == []
+    mock_lookup.assert_not_called()
+
+
+def test_search_tickers_network_failure_returns_none():
+    with patch("stock_tool._lookup_stock", side_effect=Exception("boom")):
+        assert stock_tool.search_tickers("AAP") is None
+
+
+def test_search_tickers_empty_dataframe_returns_empty_list():
+    with patch("stock_tool._lookup_stock", return_value=pd.DataFrame()):
+        assert stock_tool.search_tickers("ZZZZ9") == []
+
+
+def test_search_tickers_uses_cache_within_ttl():
+    df = pd.DataFrame(
+        {"shortName": ["Apple Inc."], "exchange": ["NMS"], "quoteType": ["EQUITY"]},
+        index=pd.Index(["AAPL"], name="symbol"),
+    )
+    with patch("stock_tool._lookup_stock", return_value=df) as mock_lookup:
+        stock_tool.search_tickers("AAP")
+        stock_tool.search_tickers("AAP")
+
+    assert mock_lookup.call_count == 1

@@ -11,7 +11,9 @@ one plain-English report.
 - **Frontend**: static HTML/CSS/JS (`index.html`, `static/`), deployed on GitHub
   Pages at `https://johnhazukajr.github.io/a_Quant/`.
 - **Endpoints**: `GET /report/{ticker}` returns the full signal report as JSON;
-  `GET /health` is a dependency-free liveness check.
+  `GET /search?q=` returns ticker-symbol suggestions for a partial query (used
+  by the search box's autocomplete dropdown); `GET /health` is a
+  dependency-free liveness check.
 
 The two deployments are wired together by two places that must stay in sync if
 either domain ever changes:

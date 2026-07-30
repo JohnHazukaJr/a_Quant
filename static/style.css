@@ -57,8 +57,13 @@ h1 {
     margin-bottom: 32px;
 }
 
-#tickerInput {
+.ticker-input-wrap {
+    position: relative;
     flex: 1;
+}
+
+#tickerInput {
+    width: 100%;
     border: 1px solid rgba(255,255,255,0.7);
     border-radius: 999px;
     padding: 14px 20px;
@@ -73,6 +78,67 @@ h1 {
 #tickerInput:focus {
     outline: 3px solid #6FCF97;
     outline-offset: 2px;
+}
+
+.suggestions-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: 6px;
+    list-style: none;
+    z-index: 10;
+    max-height: 280px;
+    overflow-y: auto;
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(18px) saturate(180%);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.7);
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(20,80,100,0.18);
+}
+
+.suggestions-dropdown[hidden] {
+    display: none;
+}
+
+.suggestion-item {
+    padding: 10px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.suggestion-item:hover,
+.suggestion-item.active {
+    background: rgba(111,207,151,0.25);
+}
+
+.suggestion-symbol {
+    font-weight: 700;
+    color: #12475C;
+}
+
+.suggestion-meta {
+    font-size: 0.8rem;
+    color: #1B6D89;
+}
+
+.suggestions-hint {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 4px;
+    margin: 0;
+    font-size: 0.8rem;
+    color: #1B6D89;
+    opacity: 0.85;
+}
+
+.suggestions-hint[hidden] {
+    display: none;
 }
 
 button {

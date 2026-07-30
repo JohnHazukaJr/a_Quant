@@ -390,6 +390,80 @@ def generate_report(ticker):
     print("No combination of these signals reliably predicts future price movement.")
 
 
+PARTIAL_TICKER_RE = re.compile(r"^[A-Z0-9.\-]{1,12}$")
+
+_search_cache = {}  # (query, max_results) -> (expires_at, results_list)
+_search_cache_lock = threading.Lock()
+SEARCH_CACHE_TTL_SECONDS = 600  # symbol/name/exchange metadata is far more
+                                 # stable than live quotes (60s report cache)
+
+
+def _normalize_search_query(query):
+    """Normalize a partial-ticker search query. Returns None for anything
+    that doesn't look like a plausible ticker prefix — unlike
+    validate_ticker, this never raises; a bad query just yields no
+    suggestions rather than an error."""
+    query = (query or "").strip().upper()
+    if not PARTIAL_TICKER_RE.match(query):
+        return None
+    return query
+
+
+@retry_on_failure()
+def _lookup_stock(query, max_results):
+    """Raw yfinance call, isolated so it's mockable/retryable independently
+    of search_tickers' validation/caching/shaping logic."""
+    return yf.Lookup(query).get_stock(count=max_results)
+
+
+def _clean_str(value):
+    """yfinance's Lookup data can have missing fields come through as NaN
+    (a float, not None) — NaN is truthy in Python, so a plain `x or y`
+    fallback lets it slip through, and a raw NaN isn't valid JSON. Only
+    pass through real, non-empty strings."""
+    return value if isinstance(value, str) and value else ""
+
+
+def search_tickers(query, max_results=8):
+    """Return up to max_results equity ticker suggestions for a partial
+    query, as a list of {symbol, name, exchange, quote_type} dicts.
+
+    Returns [] for empty/invalid input or a genuine no-match result — a
+    normal, expected state. Returns None if the lookup itself failed after
+    retries (e.g. Yahoo is down) — callers use this to distinguish "no
+    matches" from "suggestions unavailable right now"."""
+    normalized = _normalize_search_query(query)
+    if normalized is None:
+        return []
+
+    cache_key = (normalized, max_results)
+    now = time.monotonic()
+    with _search_cache_lock:
+        cached = _search_cache.get(cache_key)
+        if cached and cached[0] > now:
+            return cached[1]
+
+    try:
+        df = _lookup_stock(normalized, max_results)
+    except Exception:
+        return None  # lookup failed — distinct from "no matches"
+
+    results = []
+    if df is not None and not df.empty:
+        for symbol, row in df.iterrows():
+            results.append({
+                "symbol": symbol,
+                "name": _clean_str(row.get("shortName")) or _clean_str(row.get("longName")),
+                "exchange": _clean_str(row.get("exchange")),
+                "quote_type": _clean_str(row.get("quoteType")),
+            })
+
+    with _search_cache_lock:
+        _search_cache[cache_key] = (now + SEARCH_CACHE_TTL_SECONDS, results)
+
+    return results
+
+
 if __name__ == "__main__":
     ticker_input = input("Enter a stock ticker (e.g. AAPL, TSLA, MSFT): ")
     generate_report(ticker_input)

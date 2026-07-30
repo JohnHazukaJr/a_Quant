@@ -44,6 +44,114 @@ function renderMessage(text, cls) {
     document.getElementById("results").innerHTML = `<p class="${cls}">${text}</p>`;
 }
 
+let searchAbortController = null;
+let currentSuggestions = [];
+let activeSuggestionIndex = -1;
+
+const SEARCH_DEBOUNCE_MS = 250;
+const MIN_SUGGESTION_QUERY_LENGTH = 2;
+
+function debounce(fn, delay) {
+    let timer = null;
+    return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), delay);
+    };
+}
+
+function closeSuggestions() {
+    const dropdown = document.getElementById("tickerSuggestions");
+    const hint = document.getElementById("suggestionsHint");
+    const input = document.getElementById("tickerInput");
+
+    dropdown.hidden = true;
+    dropdown.innerHTML = "";
+    hint.hidden = true;
+    currentSuggestions = [];
+    activeSuggestionIndex = -1;
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
+}
+
+function showUnavailableHint() {
+    const dropdown = document.getElementById("tickerSuggestions");
+    const hint = document.getElementById("suggestionsHint");
+    const input = document.getElementById("tickerInput");
+
+    dropdown.hidden = true;
+    dropdown.innerHTML = "";
+    currentSuggestions = [];
+    activeSuggestionIndex = -1;
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
+    hint.hidden = false;
+}
+
+function updateActiveSuggestion() {
+    const input = document.getElementById("tickerInput");
+    const items = document.querySelectorAll("#tickerSuggestions .suggestion-item");
+    items.forEach((item, i) => item.classList.toggle("active", i === activeSuggestionIndex));
+
+    if (activeSuggestionIndex >= 0) {
+        input.setAttribute("aria-activedescendant", `suggestion-${activeSuggestionIndex}`);
+    } else {
+        input.removeAttribute("aria-activedescendant");
+    }
+}
+
+function renderSuggestions(results) {
+    currentSuggestions = results;
+    activeSuggestionIndex = -1;
+
+    const dropdown = document.getElementById("tickerSuggestions");
+    const hint = document.getElementById("suggestionsHint");
+    const input = document.getElementById("tickerInput");
+    hint.hidden = true;
+
+    if (results.length === 0) {
+        closeSuggestions();
+        return;
+    }
+
+    dropdown.innerHTML = results.map((r, i) => `
+        <li class="suggestion-item" role="option" id="suggestion-${i}">
+            <span class="suggestion-symbol">${r.symbol}</span>
+            <span class="suggestion-meta">${r.name}${r.exchange ? " — " + r.exchange : ""}</span>
+        </li>
+    `).join("");
+    dropdown.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+}
+
+function selectSuggestion(index) {
+    const item = currentSuggestions[index];
+    if (!item) return;
+    document.getElementById("tickerInput").value = item.symbol;
+    closeSuggestions();
+    getReport();
+}
+
+async function fetchSuggestions(query) {
+    if (searchAbortController) searchAbortController.abort();
+    const controller = new AbortController();
+    searchAbortController = controller;
+
+    try {
+        const response = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+            showUnavailableHint();
+            return;
+        }
+        renderSuggestions(data.results);
+    } catch (err) {
+        if (err.name === "AbortError") return;
+        showUnavailableHint();
+    }
+}
+
+const debouncedFetchSuggestions = debounce(fetchSuggestions, SEARCH_DEBOUNCE_MS);
+
 async function getReport() {
     const input = document.getElementById("tickerInput");
     const button = document.querySelector(".search-bar button");
@@ -144,7 +252,55 @@ async function getReport() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("tickerInput").addEventListener("keydown", (e) => {
-        if (e.key === "Enter") getReport();
+    const input = document.getElementById("tickerInput");
+    const dropdown = document.getElementById("tickerSuggestions");
+
+    input.addEventListener("input", () => {
+        const query = input.value.trim();
+        if (query.length < MIN_SUGGESTION_QUERY_LENGTH) {
+            closeSuggestions();
+            return;
+        }
+        debouncedFetchSuggestions(query);
+    });
+
+    input.addEventListener("keydown", (e) => {
+        const hasSuggestions = currentSuggestions.length > 0 && !dropdown.hidden;
+
+        if (hasSuggestions && e.key === "ArrowDown") {
+            e.preventDefault();
+            activeSuggestionIndex = (activeSuggestionIndex + 1) % currentSuggestions.length;
+            updateActiveSuggestion();
+            return;
+        }
+        if (hasSuggestions && e.key === "ArrowUp") {
+            e.preventDefault();
+            activeSuggestionIndex = (activeSuggestionIndex - 1 + currentSuggestions.length) % currentSuggestions.length;
+            updateActiveSuggestion();
+            return;
+        }
+        if (hasSuggestions && e.key === "Escape") {
+            closeSuggestions();
+            return;
+        }
+        if (e.key === "Enter") {
+            if (hasSuggestions && activeSuggestionIndex >= 0) {
+                e.preventDefault();
+                selectSuggestion(activeSuggestionIndex);
+                return;
+            }
+            getReport();
+        }
+    });
+
+    dropdown.addEventListener("click", (e) => {
+        const item = e.target.closest(".suggestion-item");
+        if (!item) return;
+        const index = Array.from(dropdown.children).indexOf(item);
+        selectSuggestion(index);
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!e.target.closest(".ticker-input-wrap")) closeSuggestions();
     });
 });

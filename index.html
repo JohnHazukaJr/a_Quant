@@ -12,7 +12,13 @@
         <p class="tagline">Composite stock signal analyzer</p>
 
         <div class="search-bar">
-            <input type="text" id="tickerInput" placeholder="Enter a ticker (e.g. AAPL)">
+            <div class="ticker-input-wrap">
+                <input type="text" id="tickerInput" placeholder="Enter a ticker (e.g. AAPL)"
+                       autocomplete="off" role="combobox" aria-expanded="false"
+                       aria-autocomplete="list" aria-controls="tickerSuggestions">
+                <ul id="tickerSuggestions" class="suggestions-dropdown" role="listbox" hidden></ul>
+                <p id="suggestionsHint" class="suggestions-hint" hidden>Suggestions unavailable right now.</p>
+            </div>
             <button onclick="getReport()">Get Report</button>
         </div>
 

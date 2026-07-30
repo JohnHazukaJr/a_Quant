@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from stock_tool import build_report, InvalidTickerError, TickerDataError
+from stock_tool import build_report, search_tickers, InvalidTickerError, TickerDataError
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -38,6 +38,21 @@ def report(ticker: str):
     except Exception as exc:
         logger.error("build_report(%s) failed:\n%s", ticker, traceback.format_exc())
         return JSONResponse(status_code=502, content={"error": str(exc)})
+
+
+@app.get("/search")
+def search(q: str = ""):
+    """Returns ticker-symbol suggestions for a partial query. Always 200.
+    `ok: false` means the lookup itself failed (e.g. Yahoo unavailable) —
+    distinct from ok: true with an empty list, which means no matches."""
+    try:
+        results = search_tickers(q)
+    except Exception:
+        logger.error("search_tickers(%s) failed:\n%s", q, traceback.format_exc())
+        results = None
+    if results is None:
+        return {"results": [], "ok": False}
+    return {"results": results, "ok": True}
 
 
 @app.get("/health")
