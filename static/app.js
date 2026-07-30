@@ -1,3 +1,9 @@
+// GitHub Pages only hosts the static frontend, so it must call the backend
+// on its own hosted domain instead of a same-origin relative path.
+const API_BASE = window.location.hostname === "johnhazukajr.github.io"
+    ? "https://a-quant.onrender.com"
+    : "";
+
 const LEVEL_COLORS = {
     "Low": "bubble-positive",
     "Moderate": "bubble-neutral",
@@ -34,7 +40,7 @@ function bubble(cls, icon) {
 
 async function getReport() {
     const ticker = document.getElementById("tickerInput").value;
-    const response = await fetch(`/report/${ticker}`);
+    const response = await fetch(`${API_BASE}/report/${ticker}`);
     const data = await response.json();
 
     const liveClass = trendClass(data.day_change_note);
