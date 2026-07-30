@@ -9,6 +9,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 @app.get("/report/{ticker}")
 def report(ticker: str):
