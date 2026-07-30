@@ -338,3 +338,5 @@ if __name__ == "__main__":
     ticker_input = input("Enter a stock ticker (e.g. AAPL, TSLA, MSFT): ")
     report = build_report(ticker_input.upper())
     print(report)
+
+    
