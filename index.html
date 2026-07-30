@@ -6,8 +6,17 @@
     <title>a_Quant API</title>
 </head>
 
-<body>a_Quant</body>
-<p>Composite stock signal analyzer</p>
+<body>
+    <h1>a_Quant</h1>
+    <p>Composite stock signal analyzer</p>
 
 <input type="text" id="tickerInput" placeholder="Enter a Ticker (e.g. TSLA)">
-<button onclick=""
+<button onclick="getReport()">Get Report</button>
+
+<div id="results"></div>
+
+<script src="/static/app.js"></script>
+
+</body>
+
+</html>
