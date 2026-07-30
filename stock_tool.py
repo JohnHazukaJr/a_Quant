@@ -206,6 +206,5 @@ def generate_report(ticker):
     print("\nNote: this is an educational analysis tool, not financial advice.")
     print("No combination of these signals reliably predicts future price movement.")
 
-
-# --- Try it out ---
-generate_report("AAPL")
+ticker_input = input("Enter a stock ticker (e.g. AAPL, TSLA, MSFT): ")
+generate_report(ticker_input.upper())
