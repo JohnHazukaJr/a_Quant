@@ -10,10 +10,38 @@ def get_price_history(ticker, period="3mo"):
     return history
 
 
+def get_live_quote(ticker):
+    """Pull the current real-time-delayed quote for a ticker (price, day
+    range, market cap) — the freshest data yfinance can provide."""
+    stock = yf.Ticker(ticker)
+    quote = stock.fast_info
+    return {
+        "last_price": round(quote["lastPrice"], 2),
+        "previous_close": round(quote["previousClose"], 2),
+        "day_high": round(quote["dayHigh"], 2),
+        "day_low": round(quote["dayLow"], 2),
+        "market_cap": quote["marketCap"],
+    }
+
+
 def percent_return(start_price, end_price):
     """Calculate the percentage return from start_price to end_price."""
     change = end_price - start_price
     return round((change / start_price) * 100, 2)
+
+
+def live_quote_summary(quote):
+    """Turn a live quote dict into a plain-English day-change summary."""
+    day_change = percent_return(quote["previous_close"], quote["last_price"])
+
+    if day_change > 0:
+        note = f"up {day_change}% on the day"
+    elif day_change < 0:
+        note = f"down {abs(day_change)}% on the day"
+    else:
+        note = "unchanged on the day"
+
+    return {"day_change": day_change, "note": note}
 
 
 def calculate_returns(price_list):
@@ -175,8 +203,39 @@ def insider_signal(insider_df):
     return {"level": level, "note": note}
 
 
+def get_fcf_data(ticker):
+    """Pull quarterly Free Cash Flow figures and shares outstanding for a
+    ticker."""
+    stock = yf.Ticker(ticker)
+    cashflow = stock.quarterly_cashflow
+    if cashflow is None or "Free Cash Flow" not in cashflow.index:
+        return None
+
+    return {
+        "quarterly_fcf": cashflow.loc["Free Cash Flow"].tolist(),
+        "shares": stock.fast_info["shares"],
+    }
+
+
+def fcf_per_share(fcf_data):
+    """Sum the trailing four quarters of Free Cash Flow (TTM) and divide
+    by shares outstanding."""
+    ttm_fcf = sum(fcf_data["quarterly_fcf"][:4])
+    per_share = round(ttm_fcf / fcf_data["shares"], 2)
+
+    if per_share > 0:
+        note = "Positive — the business generates more cash than it spends, including capex."
+    else:
+        note = "Negative — the business is burning cash after capital expenditures."
+
+    return {"per_share": per_share, "note": note}
+
+
 def generate_report(ticker):
     """Build the full composite signal report for a given ticker."""
+    quote = get_live_quote(ticker)
+    quote_summary = live_quote_summary(quote)
+
     price_data = get_price_history(ticker)
     prices = price_data["Close"].tolist()
     volumes = price_data["Volume"].tolist()
@@ -192,19 +251,90 @@ def generate_report(ticker):
     vol = volume_signal(rel_vol)
 
     holders = get_institutional_summary(ticker)
-    inst = institutional_signal(holders)
+    if holders is not None and not holders.empty:
+        inst = institutional_signal(holders)
+        inst_line = f"{inst['level']} — {inst['note']}"
+    else:
+        inst_line = "Not available for this ticker."
 
     insiders = get_insider_activity(ticker)
-    insider = insider_signal(insiders)
+    if insiders is not None and not insiders.empty:
+        insider = insider_signal(insiders)
+        insider_line = f"{insider['level']} — {insider['note']}"
+    else:
+        insider_line = "Not available for this ticker."
+
+    fcf_data = get_fcf_data(ticker)
+    if fcf_data is not None and len(fcf_data["quarterly_fcf"]) >= 4:
+        fcf = fcf_per_share(fcf_data)
+        fcf_line = f"${fcf['per_share']}/share — {fcf['note']}"
+    else:
+        fcf_line = "Not available for this ticker."
 
     print(f"\n=== Stock Signal Report: {ticker} ===")
+    print(f"Live Quote:               ${quote['last_price']} ({quote_summary['note']}), day range ${quote['day_low']}–${quote['day_high']}")
     print(f"Trend:                    {trend_text}")
     print(f"Risk:                     {risk['category']} — {risk['note']}")
     print(f"Volume:                   {vol['level']} ({rel_vol}x normal) — {vol['note']}")
-    print(f"Institutional (quarterly): {inst['level']} — {inst['note']}")
-    print(f"Insider activity (recent): {insider['level']} — {insider['note']}")
+    print(f"Institutional (quarterly): {inst_line}")
+    print(f"Insider activity (recent): {insider_line}")
+    print(f"Free Cash Flow/Share (TTM): {fcf_line}")
     print("\nNote: this is an educational analysis tool, not financial advice.")
     print("No combination of these signals reliably predicts future price movement.")
 
-ticker_input = input("Enter a stock ticker (e.g. AAPL, TSLA, MSFT): ")
-generate_report(ticker_input.upper())
+
+def build_report(ticker):
+    """Calculate the full signal report for a ticker and return it as a
+    dictionary (no printing) — this is what the API will use."""
+    quote = get_live_quote(ticker)
+    quote_summary = live_quote_summary(quote)
+
+    price_data = get_price_history(ticker)
+    prices = price_data["Close"].tolist()
+    volumes = price_data["Volume"].tolist()
+
+    summary = analyze_stock(ticker, prices)
+    trend_text = explain_summary(summary)
+
+    daily_returns = calculate_returns(prices)
+    ann_vol = annualized_volatility(daily_returns)
+    risk = volatility_scale(ann_vol)
+
+    rel_vol = relative_volume(volumes)
+    vol = volume_signal(rel_vol)
+
+    holders = get_institutional_summary(ticker)
+    if holders is not None and not holders.empty:
+        inst = institutional_signal(holders)
+    else:
+        inst = {"level": "N/A", "note": "Not available for this ticker."}
+
+    insiders = get_insider_activity(ticker)
+    if insiders is not None and not insiders.empty:
+        insider = insider_signal(insiders)
+    else:
+        insider = {"level": "N/A", "note": "Not available for this ticker."}
+
+    fcf_data = get_fcf_data(ticker)
+    if fcf_data is not None and len(fcf_data["quarterly_fcf"]) >= 4:
+        fcf = fcf_per_share(fcf_data)
+    else:
+        fcf = {"per_share": None, "note": "Not available for this ticker."}
+
+    return {
+        "ticker": ticker,
+        "live_quote": quote,
+        "day_change_note": quote_summary["note"],
+        "trend": trend_text,
+        "risk": risk,
+        "volume": {"ratio": rel_vol, **vol},
+        "institutional": inst,
+        "insider": insider,
+        "fcf": fcf,
+    }
+
+
+if __name__ == "__main__":
+    ticker_input = input("Enter a stock ticker (e.g. AAPL, TSLA, MSFT): ")
+    report = build_report(ticker_input.upper())
+    print(report)
