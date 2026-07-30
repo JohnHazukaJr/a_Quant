@@ -82,26 +82,6 @@ def volatility_scale(annual_vol):
     return {"category": category, "note": note}
 
 
-# --- Try it out ---
-data = get_price_history("AAPL")
-prices = data["Close"].tolist()
-print(data.columns)
-print(len(prices))
-
-result = analyze_stock("AAPL", prices)
-print(result)
-print(result["ticker"])
-print(result["average_daily_return"])
-
-explanation = explain_summary(result)
-print(explanation)
-
-daily_returns = calculate_returns(prices)
-ann_vol = annualized_volatility(daily_returns)
-scale = volatility_scale(ann_vol)
-print(f"Annualized volatility: {ann_vol}%")
-print(scale)
-
 def get_volume_history(ticker, period="3mo"):
     """Pull real historical daily trading volume for a ticker."""
     stock = yf.Ticker(ticker)
@@ -126,9 +106,112 @@ def volume_signal(rel_vol):
         return {"level": "Normal", "note": "Trading activity is within its typical range."}
 
 
-# Try it out
+def get_institutional_summary(ticker):
+    """Pull real institutional ownership data for a ticker."""
+    stock = yf.Ticker(ticker)
+    holders = stock.institutional_holders
+    return holders
+
+
+def institutional_signal(holders_df):
+    """Summarize whether institutions have broadly been increasing or
+    decreasing their stakes. Note: exact pctChange values from this data
+    source are sometimes unreliable, so we only trust the direction
+    (up/down/flat), not the precise magnitude."""
+    changes = holders_df["pctChange"].tolist()
+
+    increased = 0
+    decreased = 0
+    for c in changes:
+        if c > 0:
+            increased += 1
+        elif c < 0:
+            decreased += 1
+
+    total = len(changes)
+
+    if increased > decreased:
+        level = "Accumulating"
+        note = f"{increased} of {total} major institutional holders increased their position last quarter."
+    elif decreased > increased:
+        level = "Reducing"
+        note = f"{decreased} of {total} major institutional holders decreased their position last quarter."
+    else:
+        level = "Mixed"
+        note = "Institutional holders were evenly split between buying and selling last quarter."
+
+    return {"level": level, "note": note}
+
+
+def get_insider_activity(ticker):
+    """Pull recent insider (executive/board) transaction data — much
+    more current than quarterly institutional filings (insiders must
+    report trades within 2 business days)."""
+    stock = yf.Ticker(ticker)
+    transactions = stock.insider_transactions
+    return transactions
+
+
+def insider_signal(insider_df):
+    """Classify insider transactions using the free-text 'Text' field
+    (the structured 'Transaction' field is unreliable for this data
+    source). Gifts and blank entries are excluded, since they aren't
+    real buy/sell market signals."""
+    texts = insider_df["Text"].tolist()
+
+    buys = 0
+    sells = 0
+    for text in texts:
+        text = text.lower()
+        if "sale" in text:
+            sells += 1
+        elif "purchase" in text or "buy" in text:
+            buys += 1
+        # gifts, blanks, and anything else are intentionally skipped
+
+    if buys > sells:
+        level = "Buying"
+        note = f"{buys} insider purchases vs. {sells} sales in recent filings — purchases are the rarer, more bullish signal."
+    elif sells > buys:
+        level = "Selling"
+        note = f"{sells} insider sales vs. {buys} purchases — note that routine insider selling (taxes, diversification) is common and not necessarily bearish."
+    else:
+        level = "Mixed"
+        note = f"Insider activity was roughly balanced ({buys} buys, {sells} sells)."
+
+    return {"level": level, "note": note}
+
+
+# --- Try it out ---
+data = get_price_history("AAPL")
+prices = data["Close"].tolist()
+print(data.columns)
+print(len(prices))
+
+result = analyze_stock("AAPL", prices)
+print(result)
+print(result["ticker"])
+print(result["average_daily_return"])
+
+explanation = explain_summary(result)
+print(explanation)
+
+daily_returns = calculate_returns(prices)
+ann_vol = annualized_volatility(daily_returns)
+scale = volatility_scale(ann_vol)
+print(f"Annualized volatility: {ann_vol}%")
+print(scale)
+
 volumes = get_volume_history("AAPL")
 rel_vol = relative_volume(volumes)
 vol_signal = volume_signal(rel_vol)
 print(f"Relative volume: {rel_vol}x")
 print(vol_signal)
+
+holders = get_institutional_summary("AAPL")
+inst_signal = institutional_signal(holders)
+print(inst_signal)
+
+insiders = get_insider_activity("AAPL")
+insider_result = insider_signal(insiders)
+print(insider_result)
