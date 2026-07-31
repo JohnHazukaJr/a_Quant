@@ -19,12 +19,22 @@ class TickerDataError(StockToolError):
     """Ticker is well-formed but yfinance returned no usable data for it."""
 
 
-TICKER_RE = re.compile(r"^[A-Z0-9.\-]{1,10}$")
+def _ticker_char_pattern(max_length):
+    return re.compile(r"^[A-Z0-9.\-]{1,%d}$" % max_length)
+
+
+def _normalize_ticker_input(value):
+    """Strip/uppercase raw ticker input, shared by full-ticker validation
+    and partial-prefix search normalization."""
+    return (value or "").strip().upper()
+
+
+TICKER_RE = _ticker_char_pattern(10)
 
 
 def validate_ticker(ticker):
     """Normalize and validate a ticker symbol before any network call."""
-    ticker = (ticker or "").strip().upper()
+    ticker = _normalize_ticker_input(ticker)
     if not TICKER_RE.match(ticker):
         raise InvalidTickerError(f"'{ticker}' doesn't look like a valid ticker symbol.")
     return ticker
@@ -281,6 +291,23 @@ def fcf_per_share(fcf_data):
     return {"per_share": per_share, "note": note}
 
 
+def _cached(cache, lock, ttl_seconds, key, compute):
+    """Shared get-or-compute TTL cache: dict + lock + time.monotonic()
+    expiry, used for both the report cache and the search cache."""
+    now = time.monotonic()
+    with lock:
+        cached = cache.get(key)
+        if cached and cached[0] > now:
+            return cached[1]
+
+    value = compute()
+
+    with lock:
+        cache[key] = (now + ttl_seconds, value)
+
+    return value
+
+
 _report_cache = {}  # ticker -> (expires_at, report_dict)
 _cache_lock = threading.Lock()
 CACHE_TTL_SECONDS = 60
@@ -352,19 +379,8 @@ def build_report(ticker):
     fetch, cache, and return a full signal report dictionary. This is
     what the API and CLI both use."""
     ticker = validate_ticker(ticker)
-
-    now = time.monotonic()
-    with _cache_lock:
-        cached = _report_cache.get(ticker)
-        if cached and cached[0] > now:
-            return cached[1]
-
-    data = _fetch_report_data(ticker)
-
-    with _cache_lock:
-        _report_cache[ticker] = (now + CACHE_TTL_SECONDS, data)
-
-    return data
+    return _cached(_report_cache, _cache_lock, CACHE_TTL_SECONDS, ticker,
+                    lambda: _fetch_report_data(ticker))
 
 
 def generate_report(ticker):
@@ -390,7 +406,7 @@ def generate_report(ticker):
     print("No combination of these signals reliably predicts future price movement.")
 
 
-PARTIAL_TICKER_RE = re.compile(r"^[A-Z0-9.\-]{1,12}$")
+PARTIAL_TICKER_RE = _ticker_char_pattern(12)
 
 _search_cache = {}  # (query, max_results) -> (expires_at, results_list)
 _search_cache_lock = threading.Lock()
@@ -403,7 +419,7 @@ def _normalize_search_query(query):
     that doesn't look like a plausible ticker prefix — unlike
     validate_ticker, this never raises; a bad query just yields no
     suggestions rather than an error."""
-    query = (query or "").strip().upper()
+    query = _normalize_ticker_input(query)
     if not PARTIAL_TICKER_RE.match(query):
         return None
     return query
@@ -436,6 +452,11 @@ def search_tickers(query, max_results=8):
     if normalized is None:
         return []
 
+    # Not using the shared _cached() helper here: a failed lookup must
+    # return None *without* being cached, so a transient Yahoo failure
+    # doesn't stick around as "unavailable" for the full TTL — build_report
+    # doesn't have this requirement (its failures propagate as exceptions),
+    # so the two caches aren't quite interchangeable.
     cache_key = (normalized, max_results)
     now = time.monotonic()
     with _search_cache_lock:
@@ -450,13 +471,15 @@ def search_tickers(query, max_results=8):
 
     results = []
     if df is not None and not df.empty:
-        for symbol, row in df.iterrows():
-            results.append({
+        results = [
+            {
                 "symbol": symbol,
                 "name": _clean_str(row.get("shortName")) or _clean_str(row.get("longName")),
                 "exchange": _clean_str(row.get("exchange")),
                 "quote_type": _clean_str(row.get("quoteType")),
-            })
+            }
+            for symbol, row in df.iterrows()
+        ]
 
     with _search_cache_lock:
         _search_cache[cache_key] = (now + SEARCH_CACHE_TTL_SECONDS, results)

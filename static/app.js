@@ -4,6 +4,15 @@ const API_BASE = window.location.hostname === "johnhazukajr.github.io"
     ? "https://a-quant.onrender.com"
     : "";
 
+// Elements looked up once and reused — the script runs after these exist
+// in the DOM (script tags sit at the end of <body>), and none of them are
+// ever replaced, so there's no need to re-query on every call.
+const tickerInputEl = document.getElementById("tickerInput");
+const suggestionsDropdownEl = document.getElementById("tickerSuggestions");
+const suggestionsHintEl = document.getElementById("suggestionsHint");
+const reportButtonEl = document.querySelector(".search-bar button");
+const resultsEl = document.getElementById("results");
+
 const LEVEL_COLORS = {
     "Low": "bubble-positive",
     "Moderate": "bubble-neutral",
@@ -41,11 +50,12 @@ function bubble(cls, icon) {
 let currentAbortController = null;
 
 function renderMessage(text, cls) {
-    document.getElementById("results").innerHTML = `<p class="${cls}">${text}</p>`;
+    resultsEl.innerHTML = `<p class="${cls}">${text}</p>`;
 }
 
 let searchAbortController = null;
 let currentSuggestions = [];
+let currentSuggestionEls = [];
 let activeSuggestionIndex = -1;
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -53,80 +63,71 @@ const MIN_SUGGESTION_QUERY_LENGTH = 2;
 
 function debounce(fn, delay) {
     let timer = null;
-    return (...args) => {
+    const debounced = (...args) => {
         clearTimeout(timer);
         timer = setTimeout(() => fn(...args), delay);
     };
+    debounced.cancel = () => clearTimeout(timer);
+    return debounced;
 }
 
 function closeSuggestions() {
-    const dropdown = document.getElementById("tickerSuggestions");
-    const hint = document.getElementById("suggestionsHint");
-    const input = document.getElementById("tickerInput");
-
-    dropdown.hidden = true;
-    dropdown.innerHTML = "";
-    hint.hidden = true;
+    suggestionsDropdownEl.hidden = true;
+    suggestionsDropdownEl.innerHTML = "";
+    suggestionsHintEl.hidden = true;
     currentSuggestions = [];
+    currentSuggestionEls = [];
     activeSuggestionIndex = -1;
-    input.setAttribute("aria-expanded", "false");
-    input.removeAttribute("aria-activedescendant");
+    tickerInputEl.setAttribute("aria-expanded", "false");
+    tickerInputEl.removeAttribute("aria-activedescendant");
 }
 
 function showUnavailableHint() {
-    const dropdown = document.getElementById("tickerSuggestions");
-    const hint = document.getElementById("suggestionsHint");
-    const input = document.getElementById("tickerInput");
+    closeSuggestions();
+    suggestionsHintEl.hidden = false;
+}
 
-    dropdown.hidden = true;
-    dropdown.innerHTML = "";
-    currentSuggestions = [];
-    activeSuggestionIndex = -1;
-    input.setAttribute("aria-expanded", "false");
-    input.removeAttribute("aria-activedescendant");
-    hint.hidden = false;
+function moveActiveSuggestion(delta) {
+    const count = currentSuggestions.length;
+    activeSuggestionIndex = (activeSuggestionIndex + delta + count) % count;
+    updateActiveSuggestion();
 }
 
 function updateActiveSuggestion() {
-    const input = document.getElementById("tickerInput");
-    const items = document.querySelectorAll("#tickerSuggestions .suggestion-item");
-    items.forEach((item, i) => item.classList.toggle("active", i === activeSuggestionIndex));
+    currentSuggestionEls.forEach((item, i) => item.classList.toggle("active", i === activeSuggestionIndex));
 
     if (activeSuggestionIndex >= 0) {
-        input.setAttribute("aria-activedescendant", `suggestion-${activeSuggestionIndex}`);
+        tickerInputEl.setAttribute("aria-activedescendant", `suggestion-${activeSuggestionIndex}`);
     } else {
-        input.removeAttribute("aria-activedescendant");
+        tickerInputEl.removeAttribute("aria-activedescendant");
     }
 }
 
 function renderSuggestions(results) {
     currentSuggestions = results;
     activeSuggestionIndex = -1;
-
-    const dropdown = document.getElementById("tickerSuggestions");
-    const hint = document.getElementById("suggestionsHint");
-    const input = document.getElementById("tickerInput");
-    hint.hidden = true;
+    suggestionsHintEl.hidden = true;
 
     if (results.length === 0) {
         closeSuggestions();
         return;
     }
 
-    dropdown.innerHTML = results.map((r, i) => `
+    suggestionsDropdownEl.innerHTML = results.map((r, i) => `
         <li class="suggestion-item" role="option" id="suggestion-${i}">
             <span class="suggestion-symbol">${r.symbol}</span>
             <span class="suggestion-meta">${r.name}${r.exchange ? " — " + r.exchange : ""}</span>
         </li>
     `).join("");
-    dropdown.hidden = false;
-    input.setAttribute("aria-expanded", "true");
+    currentSuggestionEls = Array.from(suggestionsDropdownEl.children);
+    suggestionsDropdownEl.hidden = false;
+    tickerInputEl.setAttribute("aria-expanded", "true");
 }
 
 function selectSuggestion(index) {
     const item = currentSuggestions[index];
     if (!item) return;
-    document.getElementById("tickerInput").value = item.symbol;
+    tickerInputEl.value = item.symbol;
     closeSuggestions();
     getReport();
 }
@@ -139,6 +140,9 @@ async function fetchSuggestions(query) {
     try {
         const response = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
         const data = await response.json();
+        // A report submission may have started while this was in flight —
+        // don't pop the dropdown open over the results that are now loading.
+        if (reportButtonEl.disabled) return;
         if (!response.ok || !data.ok) {
             showUnavailableHint();
             return;
@@ -146,6 +150,7 @@ async function fetchSuggestions(query) {
         renderSuggestions(data.results);
     } catch (err) {
         if (err.name === "AbortError") return;
+        if (reportButtonEl.disabled) return;
         showUnavailableHint();
     }
 }
@@ -153,22 +158,27 @@ async function fetchSuggestions(query) {
 const debouncedFetchSuggestions = debounce(fetchSuggestions, SEARCH_DEBOUNCE_MS);
 
 async function getReport() {
-    const input = document.getElementById("tickerInput");
-    const button = document.querySelector(".search-bar button");
-    const ticker = input.value.trim().toUpperCase();
+    const ticker = tickerInputEl.value.trim().toUpperCase();
 
     if (!ticker) {
         renderMessage("Enter a ticker first.", "status-message");
         return;
     }
 
+    // A report submission supersedes any pending/in-flight autocomplete
+    // work — cancel it and close the dropdown before it can pop back open
+    // over the results this call is about to render.
+    debouncedFetchSuggestions.cancel();
+    if (searchAbortController) searchAbortController.abort();
+    closeSuggestions();
+
     if (currentAbortController) currentAbortController.abort();
     const controller = new AbortController();
     currentAbortController = controller;
 
-    button.disabled = true;
-    const originalButtonText = button.textContent;
-    button.textContent = "Loading…";
+    reportButtonEl.disabled = true;
+    const originalButtonText = reportButtonEl.textContent;
+    reportButtonEl.textContent = "Loading…";
     renderMessage("Loading report…", "status-message");
 
     let data;
@@ -184,8 +194,8 @@ async function getReport() {
         renderMessage("Network error — check your connection and try again.", "status-message error-message");
         return;
     } finally {
-        button.disabled = false;
-        button.textContent = originalButtonText;
+        reportButtonEl.disabled = false;
+        reportButtonEl.textContent = originalButtonText;
     }
 
     const liveClass = trendClass(data.day_change_note);
@@ -196,7 +206,7 @@ async function getReport() {
     const insiderClass = LEVEL_COLORS[data.insider.level];
     const fcfCls = fcfClass(data.fcf);
 
-    document.getElementById("results").innerHTML = `
+    resultsEl.innerHTML = `
         <div class="card">
             ${bubble(liveClass, DIRECTION_ICONS[liveClass])}
             <div>
@@ -252,11 +262,8 @@ async function getReport() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    const input = document.getElementById("tickerInput");
-    const dropdown = document.getElementById("tickerSuggestions");
-
-    input.addEventListener("input", () => {
-        const query = input.value.trim();
+    tickerInputEl.addEventListener("input", () => {
+        const query = tickerInputEl.value.trim();
         if (query.length < MIN_SUGGESTION_QUERY_LENGTH) {
             closeSuggestions();
             return;
@@ -264,19 +271,12 @@ document.addEventListener("DOMContentLoaded", () => {
         debouncedFetchSuggestions(query);
     });
 
-    input.addEventListener("keydown", (e) => {
-        const hasSuggestions = currentSuggestions.length > 0 && !dropdown.hidden;
+    tickerInputEl.addEventListener("keydown", (e) => {
+        const hasSuggestions = currentSuggestions.length > 0 && !suggestionsDropdownEl.hidden;
 
-        if (hasSuggestions && e.key === "ArrowDown") {
+        if (hasSuggestions && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
             e.preventDefault();
-            activeSuggestionIndex = (activeSuggestionIndex + 1) % currentSuggestions.length;
-            updateActiveSuggestion();
-            return;
-        }
-        if (hasSuggestions && e.key === "ArrowUp") {
-            e.preventDefault();
-            activeSuggestionIndex = (activeSuggestionIndex - 1 + currentSuggestions.length) % currentSuggestions.length;
-            updateActiveSuggestion();
+            moveActiveSuggestion(e.key === "ArrowDown" ? 1 : -1);
             return;
         }
         if (hasSuggestions && e.key === "Escape") {
@@ -293,11 +293,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    dropdown.addEventListener("click", (e) => {
+    suggestionsDropdownEl.addEventListener("click", (e) => {
         const item = e.target.closest(".suggestion-item");
         if (!item) return;
-        const index = Array.from(dropdown.children).indexOf(item);
-        selectSuggestion(index);
+        selectSuggestion(currentSuggestionEls.indexOf(item));
     });
 
     document.addEventListener("click", (e) => {
