@@ -20,7 +20,12 @@
       "Bash(nohup python \"C:\\\\Users\\\\12067\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-12067-Desktop-Programming-a-quant\\\\2a8cab5f-b727-4e78-b5a1-fa263e45acca\\\\scratchpad\\\\run_broken_search.py\")",
       "Bash(python \"C:\\\\Users\\\\12067\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-12067-Desktop-Programming-a-quant\\\\2a8cab5f-b727-4e78-b5a1-fa263e45acca\\\\scratchpad\\\\hint_check.py\")",
       "Bash(python \"C:\\\\Users\\\\12067\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-12067-Desktop-Programming-a-quant\\\\2a8cab5f-b727-4e78-b5a1-fa263e45acca\\\\scratchpad\\\\final_check.py\")",
-      "Bash(curl -s -o /dev/null -w \"health: %{http_code}\\\\n\" http://127.0.0.1:8000/health)"
+      "Bash(curl -s -o /dev/null -w \"health: %{http_code}\\\\n\" http://127.0.0.1:8000/health)",
+      "Bash(python -c ' *)",
+      "Bash(curl -sD - -o /tmp/body1.txt http://127.0.0.1:8002/report/AAPL)",
+      "Bash(curl -s http://127.0.0.1:8002/_debug/calls)",
+      "Bash(curl -sD - -o /tmp/body2.txt http://127.0.0.1:8002/report/MSFT)",
+      "Bash(curl -s http://127.0.0.1:8002/search?q=AAP)"
     ]
   }
 }

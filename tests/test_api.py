@@ -3,7 +3,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from api import app
-from stock_tool import InvalidTickerError, TickerDataError
+from stock_tool import RATE_LIMIT_COOLDOWN_SECONDS, InvalidTickerError, RateLimitedError, TickerDataError
 
 client = TestClient(app)
 
@@ -34,6 +34,14 @@ def test_report_no_data_returns_404():
         response = client.get("/report/ZZZZ9")
     assert response.status_code == 404
     assert response.json() == {"error": "no data"}
+
+
+def test_report_rate_limited_returns_503_with_retry_after():
+    with patch("api.build_report", side_effect=RateLimitedError("slow down")):
+        response = client.get("/report/AAPL")
+    assert response.status_code == 503
+    assert response.json() == {"error": "slow down"}
+    assert response.headers["retry-after"] == str(RATE_LIMIT_COOLDOWN_SECONDS)
 
 
 def test_report_unexpected_error_returns_502():

@@ -2,10 +2,12 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
+from yfinance.exceptions import YFRateLimitError
 
 import stock_tool
 from stock_tool import (
     InvalidTickerError,
+    RateLimitedError,
     TickerDataError,
     analyze_stock,
     annualized_volatility,
@@ -136,6 +138,13 @@ def clear_report_cache():
     stock_tool._report_cache.clear()
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limit_cooldown():
+    stock_tool._rate_limited_until = 0.0
+    yield
+    stock_tool._rate_limited_until = 0.0
+
+
 def test_build_report_shape():
     quote_p, price_p, holders_p, insiders_p, fcf_p = _patch_network_calls()
     with quote_p, price_p, holders_p, insiders_p, fcf_p:
@@ -173,6 +182,60 @@ def test_build_report_uses_cache_within_ttl():
         build_report("AAPL")
 
     assert mock_quote.call_count == 1
+
+
+def test_retry_on_failure_does_not_retry_rate_limit():
+    calls = []
+
+    @stock_tool.retry_on_failure(max_attempts=3, base_delay=0)
+    def flaky():
+        calls.append(1)
+        raise YFRateLimitError()
+
+    with pytest.raises(YFRateLimitError):
+        flaky()
+
+    assert len(calls) == 1  # no retries burned on a confirmed rate limit
+
+
+def test_retry_on_failure_still_retries_other_errors():
+    calls = []
+
+    @stock_tool.retry_on_failure(max_attempts=3, base_delay=0)
+    def flaky():
+        calls.append(1)
+        if len(calls) < 2:
+            raise ValueError("transient")
+        return "ok"
+
+    assert flaky() == "ok"
+    assert len(calls) == 2
+
+
+def test_build_report_converts_rate_limit_error():
+    with patch("stock_tool.get_live_quote", side_effect=YFRateLimitError()):
+        with pytest.raises(RateLimitedError):
+            build_report("AAPL")
+
+
+def test_build_report_fails_fast_during_cooldown_without_network_call():
+    stock_tool._note_rate_limited()
+    with patch("stock_tool.get_live_quote") as mock_quote:
+        with pytest.raises(RateLimitedError):
+            build_report("AAPL")
+    mock_quote.assert_not_called()
+
+
+def test_search_tickers_returns_none_on_rate_limit():
+    with patch("stock_tool._lookup_stock", side_effect=YFRateLimitError()):
+        assert stock_tool.search_tickers("AAP") is None
+
+
+def test_search_tickers_returns_none_during_cooldown_without_network_call():
+    stock_tool._note_rate_limited()
+    with patch("stock_tool._lookup_stock") as mock_lookup:
+        assert stock_tool.search_tickers("AAP") is None
+    mock_lookup.assert_not_called()
 
 
 @pytest.fixture(autouse=True)

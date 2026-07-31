@@ -5,7 +5,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from stock_tool import build_report, search_tickers, InvalidTickerError, TickerDataError
+from stock_tool import (
+    RATE_LIMIT_COOLDOWN_SECONDS,
+    InvalidTickerError,
+    RateLimitedError,
+    TickerDataError,
+    build_report,
+    search_tickers,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -35,6 +42,12 @@ def report(ticker: str):
         return JSONResponse(status_code=400, content={"error": str(exc)})
     except TickerDataError as exc:
         return JSONResponse(status_code=404, content={"error": str(exc)})
+    except RateLimitedError as exc:
+        return JSONResponse(
+            status_code=503,
+            content={"error": str(exc)},
+            headers={"Retry-After": str(RATE_LIMIT_COOLDOWN_SECONDS)},
+        )
     except Exception as exc:
         logger.error("build_report(%s) failed:\n%s", ticker, traceback.format_exc())
         return JSONResponse(status_code=502, content={"error": str(exc)})

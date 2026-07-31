@@ -5,6 +5,7 @@ import math
 import threading
 import time
 import yfinance as yf
+from yfinance.exceptions import YFRateLimitError
 
 
 class StockToolError(Exception):
@@ -17,6 +18,36 @@ class InvalidTickerError(StockToolError):
 
 class TickerDataError(StockToolError):
     """Ticker is well-formed but yfinance returned no usable data for it."""
+
+
+class RateLimitedError(StockToolError):
+    """Yahoo Finance is rate-limiting this server right now."""
+
+
+_rate_limit_lock = threading.Lock()
+_rate_limited_until = 0.0
+RATE_LIMIT_COOLDOWN_SECONDS = 30
+
+
+def _note_rate_limited():
+    """Record that Yahoo just rate-limited us. The limit is effectively
+    IP-wide (not per-ticker), so once it happens, every other in-flight or
+    new lookup is about to hit it too — no point letting each one waste
+    its own retry budget finding that out independently."""
+    global _rate_limited_until
+    with _rate_limit_lock:
+        _rate_limited_until = time.monotonic() + RATE_LIMIT_COOLDOWN_SECONDS
+
+
+def _check_rate_limit_cooldown():
+    """Raise immediately, without touching the network, if we're still
+    within a cooldown window from a recent rate-limit hit."""
+    with _rate_limit_lock:
+        remaining = _rate_limited_until - time.monotonic()
+    if remaining > 0:
+        raise RateLimitedError(
+            f"Yahoo Finance is rate-limiting this server right now — try again in about {int(remaining) + 1}s."
+        )
 
 
 def _ticker_char_pattern(max_length):
@@ -42,14 +73,23 @@ def validate_ticker(ticker):
 
 def retry_on_failure(max_attempts=3, base_delay=0.5):
     """Retry a flaky network call with exponential backoff. Yahoo Finance
-    occasionally rate-limits or transiently fails; most such failures clear
-    up within a couple of seconds."""
+    occasionally has brief transient failures that clear up within a
+    couple of seconds, which this papers over.
+
+    A rate limit is different: it's Yahoo explicitly telling us to back
+    off, and retrying within ~1.5s of backoff just spends the retry
+    budget confirming we're still rate-limited. So that one exception
+    type is deliberately NOT retried here — it's noted (see
+    _note_rate_limited) and re-raised immediately."""
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             for attempt in range(1, max_attempts + 1):
                 try:
                     return fn(*args, **kwargs)
+                except YFRateLimitError:
+                    _note_rate_limited()
+                    raise
                 except Exception:
                     if attempt == max_attempts:
                         raise
@@ -317,6 +357,8 @@ def _fetch_report_data(ticker):
     """Fetch and assemble the full signal report for a ticker (no caching,
     no validation — always hits the network). Shared by build_report and
     generate_report so there's one source of truth for report assembly."""
+    _check_rate_limit_cooldown()
+
     try:
         quote = get_live_quote(ticker)
     except KeyError:
@@ -379,8 +421,16 @@ def build_report(ticker):
     fetch, cache, and return a full signal report dictionary. This is
     what the API and CLI both use."""
     ticker = validate_ticker(ticker)
-    return _cached(_report_cache, _cache_lock, CACHE_TTL_SECONDS, ticker,
-                    lambda: _fetch_report_data(ticker))
+    try:
+        return _cached(_report_cache, _cache_lock, CACHE_TTL_SECONDS, ticker,
+                        lambda: _fetch_report_data(ticker))
+    except YFRateLimitError as exc:
+        # Normalize the raw yfinance exception to our own type, so callers
+        # only ever need to handle one rate-limit exception, regardless of
+        # whether this is the request that discovered the limit (this
+        # path) or one that arrived during the cooldown that followed
+        # (raised directly as RateLimitedError by _check_rate_limit_cooldown).
+        raise RateLimitedError(str(exc)) from exc
 
 
 def generate_report(ticker):
@@ -465,9 +515,10 @@ def search_tickers(query, max_results=8):
             return cached[1]
 
     try:
+        _check_rate_limit_cooldown()
         df = _lookup_stock(normalized, max_results)
     except Exception:
-        return None  # lookup failed — distinct from "no matches"
+        return None  # lookup failed (including rate-limited) — distinct from "no matches"
 
     results = []
     if df is not None and not df.empty:
