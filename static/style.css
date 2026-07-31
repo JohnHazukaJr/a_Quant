@@ -1,17 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 * {
     box-sizing: border-box;
-}
-
-body {
-    margin: 0;
-    min-height: 100vh;
-    background: linear-gradient(180deg, #BEE8FB 0%, #7FD4F5 35%, #2E9FE0 100%);
-    font-family: 'Nunito', sans-serif;
-    color: #0D3B4A;
-    padding: 48px 24px;
-    position: relative;
-    overflow-x: hidden;
 }
 
 body {
@@ -21,11 +10,12 @@ body {
         radial-gradient(circle at 15% 15%, rgba(111,207,151,0.12), transparent 45%),
         radial-gradient(circle at 85% 85%, rgba(31,168,201,0.16), transparent 50%),
         linear-gradient(160deg, #EAF3F8 0%, #DCEAF2 55%, #CDE3ED 100%);
-    font-family: 'Nunito', sans-serif;
+    font-family: 'Manrope', sans-serif;
     color: #0D3B4A;
     padding: 48px 24px;
     position: relative;
     overflow-x: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .container {
@@ -36,8 +26,8 @@ body {
 }
 
 h1 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 700;
+    font-family: 'Manrope', sans-serif;
+    font-weight: 800;
     font-size: 3rem;
     letter-spacing: -0.02em;
     color: #12475C;
@@ -49,6 +39,43 @@ h1 {
     font-weight: 600;
     margin-top: 4px;
     margin-bottom: 32px;
+}
+
+.page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.icon-button {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255,255,255,0.7);
+    background: rgba(255,255,255,0.35);
+    backdrop-filter: blur(10px) saturate(160%);
+    -webkit-backdrop-filter: blur(10px) saturate(160%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 4px 10px rgba(20,80,100,0.12);
+}
+
+.icon-button svg {
+    width: 18px;
+    height: 18px;
+    color: #12475C;
+}
+
+.icon-button:hover {
+    background: rgba(255,255,255,0.5);
+}
+
+.icon-button:active {
+    transform: scale(0.92);
 }
 
 .search-bar {
@@ -67,7 +94,7 @@ h1 {
     border: 1px solid rgba(255,255,255,0.7);
     border-radius: 999px;
     padding: 14px 20px;
-    font-family: 'Nunito', sans-serif;
+    font-family: 'Manrope', sans-serif;
     font-size: 1rem;
     background: rgba(255,255,255,0.45);
     backdrop-filter: blur(10px) saturate(160%);
@@ -154,14 +181,14 @@ button {
     border: 1.5px solid rgba(255,255,255,0.85);
     border-radius: 999px;
     padding: 14px 28px;
-    font-family: 'Quicksand', sans-serif;
+    font-family: 'Manrope', sans-serif;
     font-weight: 700;
     font-size: 1rem;
     color: #12475C;
     background: rgba(255,255,255,0.15);
     backdrop-filter: blur(14px) saturate(180%);
     -webkit-backdrop-filter: blur(14px) saturate(180%);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 4px 14px rgba(20,80,100,0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 4px 14px rgba(20,80,100,0.12), 0 0 22px rgba(31,168,201,0.28);
     cursor: pointer;
     transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, transform 0.15s ease;
 }
@@ -182,20 +209,21 @@ button::before {
 button:hover {
     background: rgba(255,255,255,0.3);
     border-color: rgba(255,255,255,1);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 6px 18px rgba(20,80,100,0.18);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 6px 18px rgba(20,80,100,0.18), 0 0 34px rgba(31,168,201,0.5);
 }
 
-/* looks physically pressed into the glass — no color, just depth */
+/* looks physically pressed into the glass — depth stays, glow settles */
 button:active {
     background: rgba(255,255,255,0.45);
     transform: scale(0.97);
-    box-shadow: inset 0 3px 10px rgba(20,80,100,0.22), inset 0 1px 2px rgba(255,255,255,0.6);
+    box-shadow: inset 0 3px 10px rgba(20,80,100,0.22), inset 0 1px 2px rgba(255,255,255,0.6), 0 0 18px rgba(31,168,201,0.35);
 }
 
 button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
     transform: none;
+    box-shadow: none;
 }
 
 .status-message {
@@ -255,7 +283,7 @@ button:disabled {
 .bubble-neutral   { background: radial-gradient(circle at 35% 30%, #C9EBFA, #6FC3E8); }
 
 .card-label {
-    font-family: 'Quicksand', sans-serif;
+    font-family: 'Manrope', sans-serif;
     font-weight: 700;
     font-size: 0.75rem;
     text-transform: uppercase;
@@ -267,4 +295,148 @@ button:disabled {
 .card-value {
     font-size: 0.95rem;
     color: #0D3B4A;
+}
+
+/* ============================================================
+   Dark theme — additive overrides only, scoped under
+   html[data-theme="dark"]. Light theme above is untouched;
+   this block never runs unless the toggle sets the attribute.
+   Palette/glass recipe adapted from the "Glass Buttons" design
+   reference (OKLCH tokens), with a hex fallback declared first
+   on every color for browsers without oklch() support.
+   ============================================================ */
+
+html[data-theme="dark"] body {
+    background: #15131c;
+    background:
+        radial-gradient(1100px 700px at 12% -8%, oklch(0.62 0.19 300 / 0.35), transparent 60%),
+        radial-gradient(900px 650px at 92% 8%, oklch(0.78 0.13 195 / 0.30), transparent 55%),
+        radial-gradient(1000px 800px at 50% 105%, oklch(0.72 0.17 145 / 0.18), transparent 60%),
+        oklch(0.15 0.02 250);
+    color: #f0f0f2;
+    color: oklch(0.95 0.01 250);
+}
+
+html[data-theme="dark"] h1 {
+    font-weight: 800;
+    color: #f0f0f2;
+    color: oklch(0.95 0.01 250);
+}
+
+html[data-theme="dark"] .tagline {
+    color: #b7b7bd;
+    color: oklch(0.95 0.01 250 / 0.55);
+}
+
+html[data-theme="dark"] .icon-button {
+    border: 1px solid rgba(255,255,255,0.18);
+    background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.03));
+    box-shadow: 0 4px 14px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+}
+
+html[data-theme="dark"] .icon-button svg {
+    color: #f0f0f2;
+    color: oklch(0.95 0.01 250);
+}
+
+html[data-theme="dark"] .icon-button:hover {
+    background: linear-gradient(135deg, rgba(255,255,255,0.20), rgba(255,255,255,0.05));
+}
+
+html[data-theme="dark"] #tickerInput {
+    border: 1px solid rgba(255,255,255,0.18);
+    background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.03));
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2), 0 1px 0 rgba(255,255,255,0.1);
+    color: #f0f0f2;
+    color: oklch(0.95 0.01 250);
+}
+
+html[data-theme="dark"] #tickerInput::placeholder {
+    color: rgba(255,255,255,0.4);
+}
+
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .suggestions-dropdown {
+    border: 1px solid rgba(255,255,255,0.16);
+}
+
+html[data-theme="dark"] .suggestions-dropdown {
+    background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+html[data-theme="dark"] .suggestion-item:hover,
+html[data-theme="dark"] .suggestion-item.active {
+    background: rgba(255,255,255,0.10);
+}
+
+html[data-theme="dark"] .suggestion-symbol {
+    color: #f0f0f2;
+    color: oklch(0.95 0.01 250);
+}
+
+html[data-theme="dark"] .suggestion-meta,
+html[data-theme="dark"] .suggestions-hint {
+    color: #b7b7bd;
+    color: oklch(0.95 0.01 250 / 0.55);
+}
+
+html[data-theme="dark"] .status-message {
+    color: #7dd3e8;
+    color: oklch(0.78 0.13 195);
+}
+
+html[data-theme="dark"] .error-message {
+    color: #e0574a;
+    color: oklch(0.63 0.19 25);
+}
+
+/* primary "Get Report" button — cyan tinted glass, following the
+   reference's Default/Hover/Pressed/Disabled button-state recipe */
+html[data-theme="dark"] .search-bar button {
+    color: #f5fafc;
+    color: oklch(0.98 0.01 250);
+    background: linear-gradient(135deg, rgba(31,168,201,0.5), rgba(31,168,201,0.2));
+    background: linear-gradient(135deg, oklch(0.78 0.13 195 / 0.5), oklch(0.78 0.13 195 / 0.2));
+    border: 1px solid rgba(31,168,201,0.5);
+    border: 1px solid oklch(0.78 0.13 195 / 0.5);
+    box-shadow: 0 6px 16px rgba(31,168,201,0.2), inset 0 1px 0 rgba(255,255,255,0.3), 0 0 26px rgba(31,168,201,0.4);
+    box-shadow: 0 6px 16px oklch(0.78 0.13 195 / 0.2), inset 0 1px 0 rgba(255,255,255,0.3), 0 0 26px oklch(0.78 0.13 195 / 0.4);
+}
+
+html[data-theme="dark"] .search-bar button:hover {
+    background: linear-gradient(135deg, oklch(0.78 0.13 195 / 0.65), oklch(0.78 0.13 195 / 0.3));
+    border-color: oklch(0.78 0.13 195 / 0.65);
+    box-shadow: 0 8px 20px oklch(0.78 0.13 195 / 0.3), inset 0 1px 0 rgba(255,255,255,0.4), 0 0 42px oklch(0.78 0.13 195 / 0.65);
+}
+
+html[data-theme="dark"] .search-bar button:active {
+    background: linear-gradient(135deg, oklch(0.78 0.13 195 / 0.4), oklch(0.78 0.13 195 / 0.18));
+    border-color: oklch(0.78 0.13 195 / 0.5);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.3), 0 0 22px oklch(0.78 0.13 195 / 0.45);
+}
+
+html[data-theme="dark"] .search-bar button:disabled {
+    color: rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.08);
+}
+
+html[data-theme="dark"] .card {
+    background: linear-gradient(135deg, rgba(255,255,255,0.09), rgba(255,255,255,0.02));
+    box-shadow: 0 1px 0 rgba(255,255,255,0.14) inset, 0 8px 24px rgba(0,0,0,0.4);
+}
+
+html[data-theme="dark"] .card::before {
+    background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0));
+}
+
+html[data-theme="dark"] .card-label {
+    color: #7dd3e8;
+    color: oklch(0.78 0.13 195);
+}
+
+html[data-theme="dark"] .card-value {
+    color: #f0f0f2;
+    color: oklch(0.95 0.01 250);
 }

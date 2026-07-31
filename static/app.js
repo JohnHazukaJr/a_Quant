@@ -12,6 +12,31 @@ const suggestionsDropdownEl = document.getElementById("tickerSuggestions");
 const suggestionsHintEl = document.getElementById("suggestionsHint");
 const reportButtonEl = document.querySelector(".search-bar button");
 const resultsEl = document.getElementById("results");
+const themeToggleEl = document.getElementById("themeToggle");
+
+const THEME_STORAGE_KEY = "aquant-theme";
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    // Rebuilding the <i data-lucide> placeholder each call (rather than
+    // mutating one in place) because lucide.createIcons() replaces it with
+    // a real <svg> — a cached reference to the placeholder goes stale after
+    // the first conversion. Same pattern getReport() uses for card icons.
+    themeToggleEl.innerHTML = `<i data-lucide="${theme === "dark" ? "sun" : "moon"}"></i>`;
+    themeToggleEl.setAttribute("aria-label", theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
+    if (window.lucide) lucide.createIcons();
+}
+
+function toggleTheme() {
+    const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    localStorage.setItem(THEME_STORAGE_KEY, next);
+    applyTheme(next);
+}
+
+// Apply the saved/preferred theme immediately (before DOMContentLoaded) so
+// there's no flash of the wrong theme on load.
+const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+applyTheme(savedTheme || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
 
 const LEVEL_COLORS = {
     "Low": "bubble-positive",
@@ -262,6 +287,8 @@ async function getReport() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+    themeToggleEl.addEventListener("click", toggleTheme);
+
     tickerInputEl.addEventListener("input", () => {
         const query = tickerInputEl.value.trim();
         if (query.length < MIN_SUGGESTION_QUERY_LENGTH) {
